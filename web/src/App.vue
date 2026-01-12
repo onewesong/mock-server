@@ -1,106 +1,144 @@
 <template>
-  <div class="app-shell">
-    <header class="app-header">
-      <div>
-        <div class="app-title">Mock Server</div>
-        <div class="app-subtitle">简化版：只配置状态码与响应体</div>
-      </div>
-      <div class="actions-row">
-        <el-button type="primary" @click="openCreateDialog">新增 Route</el-button>
-        <el-button @click="exportData">导出</el-button>
-        <el-upload :auto-upload="false" :show-file-list="false" accept="application/json" @change="importData">
-          <el-button>导入</el-button>
-        </el-upload>
-      </div>
-    </header>
+  <div class="min-h-full bg-gradient-to-br from-slate-50 via-white to-slate-100">
+    <div class="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-8">
+      <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <div class="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">Mock Server</div>
+          <div class="mt-1 text-sm text-slate-500">简化版：只配置状态码与响应体</div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <el-button type="primary" @click="openCreateDialog">新增 Route</el-button>
+          <el-button @click="exportData">导出</el-button>
+          <el-upload :auto-upload="false" :show-file-list="false" accept="application/json" @change="importData">
+            <el-button>导入</el-button>
+          </el-upload>
+        </div>
+      </header>
 
-    <div class="app-grid">
-      <section class="panel">
-        <div class="panel-title">Routes</div>
-        <el-input v-model="search" placeholder="过滤（路径/名称）" clearable />
-        <div style="margin-top: 12px; display: grid; gap: 8px">
-          <div
-            v-for="ep in filteredEndpoints"
-            :key="ep.id"
-            class="endpoint-item"
-            :class="{ active: ep.id === store.selectedId }"
-            @click="store.selectEndpoint(ep.id)"
-          >
-            <div class="endpoint-meta">
-              <span class="method-pill">{{ ep.method }}</span>
-              <span>{{ ep.pathPattern }}</span>
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
+        <section class="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-soft backdrop-blur">
+          <div class="mb-3 flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-900">Routes</div>
+            <div class="text-xs text-slate-500">{{ store.endpoints.length }}</div>
+          </div>
+          <el-input v-model="search" placeholder="过滤（路径/名称）" clearable />
+          <div class="mt-4 grid gap-2">
+            <div
+              v-for="ep in filteredEndpoints"
+              :key="ep.id"
+              class="group cursor-pointer rounded-xl border px-3 py-2.5 transition"
+              :class="
+                ep.id === store.selectedId
+                  ? 'border-indigo-200 bg-indigo-50/70 shadow-sm'
+                  : 'border-transparent bg-white hover:border-slate-200 hover:bg-slate-50'
+              "
+              @click="store.selectEndpoint(ep.id)"
+            >
+              <div class="flex items-center gap-2 text-xs text-slate-500">
+                <span
+                  class="rounded-full px-2 py-0.5 font-semibold tracking-wide text-white"
+                  :class="ep.id === store.selectedId ? 'bg-indigo-600' : 'bg-slate-900'"
+                >
+                  {{ ep.method }}
+                </span>
+                <span class="truncate font-medium text-slate-700">{{ ep.pathPattern }}</span>
+              </div>
+              <div class="mt-1 truncate text-sm font-medium text-slate-900">
+                {{ ep.name || "未命名" }}
+              </div>
             </div>
-            <div>{{ ep.name || "未命名" }}</div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section class="panel" v-if="store.selected">
-        <div class="panel-title">Route</div>
-        <div class="route-bar">
-          <el-switch v-model="endpointForm.enabled" />
-          <el-select v-model="endpointForm.method" placeholder="GET" style="width: 120px">
-            <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
-          </el-select>
-          <el-input v-model="endpointForm.pathPattern" placeholder="/users/:id" />
-          <el-button type="primary" @click="saveEndpoint">保存</el-button>
-          <el-button type="danger" plain @click="removeEndpoint">删除</el-button>
-        </div>
-        <div style="margin-top: 10px">
-          <el-input v-model="endpointForm.name" placeholder="备注/名称（可选）" />
-        </div>
+        <section v-if="store.selected" class="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-soft backdrop-blur">
+          <div class="mb-3 flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-900">Route</div>
+            <div class="flex items-center gap-2">
+              <el-button type="primary" @click="saveEndpoint">保存</el-button>
+              <el-button type="danger" plain @click="removeEndpoint">删除</el-button>
+            </div>
+          </div>
 
-        <div class="panel-title" style="margin-top: 20px">Status & Body</div>
-        <div v-if="!responseRuleId" class="empty-hint">
-          当前 Route 还没有响应配置。
-          <el-button type="primary" size="small" @click="createDefaultResponse">创建默认响应</el-button>
-        </div>
-        <div v-else class="response-editor">
-          <div class="response-meta">
-            <el-input-number v-model="responseForm.status" :min="100" :max="599" />
-            <el-select v-model="responseForm.bodyType" style="width: 120px">
-              <el-option label="json" value="json" />
-              <el-option label="text" value="text" />
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div class="flex items-center gap-3">
+              <div class="text-xs font-medium text-slate-500">启用</div>
+              <el-switch v-model="endpointForm.enabled" />
+            </div>
+            <div class="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+              <el-select v-model="endpointForm.method" placeholder="GET" style="width: 120px">
+                <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+              </el-select>
+              <el-input v-model="endpointForm.pathPattern" placeholder="/users/:id" />
+            </div>
+          </div>
+          <div class="mt-3">
+            <el-input v-model="endpointForm.name" placeholder="备注/名称（可选）" />
+          </div>
+
+          <div class="mt-6 flex items-center justify-between">
+            <div class="text-sm font-semibold text-slate-900">Status &amp; Body</div>
+            <div class="text-xs text-slate-500">默认响应</div>
+          </div>
+
+          <div
+            v-if="!responseRuleId"
+            class="mt-3 flex items-center gap-3 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm text-slate-600"
+          >
+            <div class="flex-1">当前 Route 还没有响应配置</div>
+            <el-button type="primary" size="small" @click="createDefaultResponse">创建默认响应</el-button>
+          </div>
+
+          <div v-else class="mt-3">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div class="flex items-center gap-2">
+                <div class="text-xs font-medium text-slate-500">状态码</div>
+                <el-input-number v-model="responseForm.status" :min="100" :max="599" />
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="text-xs font-medium text-slate-500">类型</div>
+                <el-select v-model="responseForm.bodyType" style="width: 120px">
+                  <el-option label="json" value="json" />
+                  <el-option label="text" value="text" />
+                </el-select>
+              </div>
+              <div class="flex-1"></div>
+              <div class="flex items-center gap-2">
+                <el-button v-if="responseForm.bodyType === 'json'" @click="beautifyJSON">Beautify JSON</el-button>
+                <el-button type="primary" @click="saveResponse">保存响应</el-button>
+              </div>
+            </div>
+            <div class="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <el-input v-model="responseForm.body" type="textarea" :rows="14" placeholder="响应体（json/text）" />
+            </div>
+          </div>
+        </section>
+
+        <section v-else class="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-soft backdrop-blur">
+          <div class="text-sm font-semibold text-slate-900">Route</div>
+          <div class="mt-2 text-sm text-slate-500">先在左侧选择或新增一个 Route</div>
+        </section>
+      </div>
+
+      <el-dialog v-model="showEndpointDialog" title="新增 Route" width="520px">
+        <el-form :model="createForm" label-width="90px">
+          <el-form-item label="方法">
+            <el-select v-model="createForm.method" placeholder="选择方法">
+              <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
             </el-select>
-            <el-button v-if="responseForm.bodyType === 'json'" @click="beautifyJSON">Beautify JSON</el-button>
-            <div style="flex: 1"></div>
-            <el-button type="primary" @click="saveResponse">保存响应</el-button>
-          </div>
-          <el-input
-            v-model="responseForm.body"
-            type="textarea"
-            :rows="12"
-            placeholder="响应体（json/text）"
-            style="margin-top: 10px"
-          />
-        </div>
-      </section>
-
-      <section class="panel" v-else>
-        <div class="panel-title">Route</div>
-        <div style="color: var(--muted)">先在左侧选择或新增一个 Route</div>
-      </section>
+          </el-form-item>
+          <el-form-item label="路径">
+            <el-input v-model="createForm.pathPattern" placeholder="/users/:id" />
+          </el-form-item>
+          <el-form-item label="名称">
+            <el-input v-model="createForm.name" placeholder="可选" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showEndpointDialog = false">取消</el-button>
+          <el-button type="primary" @click="createEndpoint">创建</el-button>
+        </template>
+      </el-dialog>
     </div>
-
-    <el-dialog v-model="showEndpointDialog" title="新增 Route" width="520px">
-      <el-form :model="createForm" label-width="90px">
-        <el-form-item label="方法">
-          <el-select v-model="createForm.method" placeholder="选择方法">
-            <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="路径">
-          <el-input v-model="createForm.pathPattern" placeholder="/users/:id" />
-        </el-form-item>
-        <el-form-item label="名称">
-          <el-input v-model="createForm.name" placeholder="可选" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showEndpointDialog = false">取消</el-button>
-        <el-button type="primary" @click="createEndpoint">创建</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
@@ -139,7 +177,7 @@ const responseRuleId = ref("");
 const responseForm = reactive({
   status: 200,
   bodyType: "json",
-  body: "{}",
+  body: "{}"
 });
 
 const filteredEndpoints = computed(() => {
