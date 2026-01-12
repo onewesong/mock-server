@@ -54,6 +54,7 @@
           <div class="mb-3 flex items-center justify-between">
             <div class="text-sm font-semibold text-slate-900">Route</div>
             <div class="flex items-center gap-2">
+              <el-button @click="openCurlDialog">生成 curl</el-button>
               <el-button type="primary" @click="saveEndpoint">保存</el-button>
               <el-button type="danger" plain @click="removeEndpoint">删除</el-button>
             </div>
@@ -138,6 +139,26 @@
           <el-button type="primary" @click="createEndpoint">创建</el-button>
         </template>
       </el-dialog>
+
+      <el-dialog v-model="showCurlDialog" title="一键生成 curl" width="720px">
+        <div class="flex flex-col gap-3">
+          <div class="text-sm text-slate-600">
+            生成的是请求 Mock 端口的命令（默认 `http://{host}:8180`），可按需修改。
+          </div>
+          <div class="flex items-center gap-2">
+            <div class="w-24 text-xs font-medium text-slate-500">Base URL</div>
+            <el-input v-model="curlBaseUrl" placeholder="http://localhost:8180" />
+            <el-button @click="resetCurlBaseUrl">重置</el-button>
+          </div>
+          <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <el-input v-model="curlText" type="textarea" :rows="10" readonly />
+          </div>
+        </div>
+        <template #footer>
+          <el-button @click="showCurlDialog = false">关闭</el-button>
+          <el-button type="primary" @click="copyCurl">复制</el-button>
+        </template>
+      </el-dialog>
     </div>
   </div>
 </template>
@@ -152,6 +173,9 @@ import { api } from "./api";
 const store = useEndpointsStore();
 const search = ref("");
 const showEndpointDialog = ref(false);
+const showCurlDialog = ref(false);
+const curlBaseUrl = ref("");
+const curlText = ref("");
 
 const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
@@ -224,6 +248,64 @@ watch(
 onMounted(() => {
   store.loadEndpoints().catch((err) => ElMessage.error(err.message));
 });
+
+function defaultCurlBaseUrl() {
+  const host = window.location.hostname || "localhost";
+  return `http://${host}:8180`;
+}
+
+function resetCurlBaseUrl() {
+  curlBaseUrl.value = defaultCurlBaseUrl();
+}
+
+function toExamplePath(pathPattern: string) {
+  // /users/:id -> /users/123；其余保持原样
+  return pathPattern.replace(/:([A-Za-z0-9_]+)/g, "123");
+}
+
+function shellEscapeSingleQuotes(input: string) {
+  // 使用单引号包裹：内部 ' 需要替换为 '"'"'
+  return input.replace(/'/g, `'\"'\"'`);
+}
+
+function buildCurl() {
+  if (!store.selected) return "";
+  const method = (endpointForm.method || store.selected.method || "GET").toUpperCase();
+  const path = toExamplePath(endpointForm.pathPattern || store.selected.pathPattern || "/");
+  const base = (curlBaseUrl.value || defaultCurlBaseUrl()).replace(/\/+$/, "");
+  const url = `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  const parts: string[] = ["curl -i"];
+  if (method !== "GET") {
+    parts.push(`-X ${method}`);
+  }
+
+  // 给可带 body 的方法一个占位 body，方便直接跑起来
+  if (["POST", "PUT", "PATCH"].includes(method)) {
+    parts.push(`-H 'Content-Type: application/json'`);
+    parts.push(`-d '{}'`);
+  }
+
+  parts.push(`'${shellEscapeSingleQuotes(url)}'`);
+  return parts.join(" \\\n  ");
+}
+
+function openCurlDialog() {
+  if (!curlBaseUrl.value) {
+    resetCurlBaseUrl();
+  }
+  curlText.value = buildCurl();
+  showCurlDialog.value = true;
+}
+
+async function copyCurl() {
+  try {
+    await navigator.clipboard.writeText(curlText.value);
+    ElMessage.success("已复制");
+  } catch {
+    ElMessage.error("复制失败（请手动复制）");
+  }
+}
 
 function openCreateDialog() {
   createForm.method = "GET";
