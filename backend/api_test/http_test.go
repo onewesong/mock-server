@@ -14,7 +14,8 @@ import (
 )
 
 type testEnv struct {
-	server *httptest.Server
+	admin   *httptest.Server
+	mock    *httptest.Server
 	dbClose func() error
 }
 
@@ -31,14 +32,17 @@ func setupEnv(t *testing.T) testEnv {
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-	router := server.NewRouter(store, server.Config{})
-	server := httptest.NewServer(router)
-	return testEnv{server: server, dbClose: db.Close}
+	adminRouter := server.NewAdminRouter(store, server.Config{})
+	mockRouter := server.NewMockRouter(store)
+	admin := httptest.NewServer(adminRouter)
+	mock := httptest.NewServer(mockRouter)
+	return testEnv{admin: admin, mock: mock, dbClose: db.Close}
 }
 
 func TestEndpointRuleFlow(t *testing.T) {
 	env := setupEnv(t)
-	defer env.server.Close()
+	defer env.admin.Close()
+	defer env.mock.Close()
 	defer func() {
 		_ = env.dbClose()
 	}()
@@ -52,13 +56,13 @@ func TestEndpointRuleFlow(t *testing.T) {
 		"description": "测试接口",
 	}
 	var createdEndpoint server.Endpoint
-	postJSON(t, env.server.URL+"/__admin/api/endpoints", endpointPayload, &createdEndpoint)
+	postJSON(t, env.admin.URL+"/api/endpoints", endpointPayload, &createdEndpoint)
 	if createdEndpoint.ID == "" {
 		t.Fatalf("endpoint id empty")
 	}
 
 	var endpoints []server.Endpoint
-	getJSON(t, env.server.URL+"/__admin/api/endpoints", &endpoints)
+	getJSON(t, env.admin.URL+"/api/endpoints", &endpoints)
 	if len(endpoints) != 1 {
 		t.Fatalf("expected 1 endpoint, got %d", len(endpoints))
 	}
@@ -72,7 +76,7 @@ func TestEndpointRuleFlow(t *testing.T) {
 		"description": "更新",
 	}
 	var updatedEndpoint server.Endpoint
-	putJSON(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID, updatePayload, &updatedEndpoint)
+	putJSON(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID, updatePayload, &updatedEndpoint)
 	if updatedEndpoint.Name != "用户详情-更新" {
 		t.Fatalf("update endpoint failed")
 	}
@@ -100,13 +104,13 @@ func TestEndpointRuleFlow(t *testing.T) {
 		},
 	}
 	var createdRule server.Rule
-	postJSON(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID+"/rules", rulePayload, &createdRule)
+	postJSON(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID+"/rules", rulePayload, &createdRule)
 	if createdRule.ID == "" {
 		t.Fatalf("rule id empty")
 	}
 
 	var rules []server.Rule
-	getJSON(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID+"/rules", &rules)
+	getJSON(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID+"/rules", &rules)
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(rules))
 	}
@@ -121,12 +125,12 @@ func TestEndpointRuleFlow(t *testing.T) {
 		"body": "",
 	}
 	var previewResp server.PreviewResponse
-	postJSON(t, env.server.URL+"/__admin/api/preview", previewPayload, &previewResp)
+	postJSON(t, env.admin.URL+"/api/preview", previewPayload, &previewResp)
 	if !previewResp.Matched || previewResp.RuleID == "" {
 		t.Fatalf("preview not matched")
 	}
 
-	req, err := http.NewRequest("GET", env.server.URL+"/users/123", nil)
+	req, err := http.NewRequest("GET", env.mock.URL+"/users/123", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -143,13 +147,14 @@ func TestEndpointRuleFlow(t *testing.T) {
 		t.Fatalf("mock header missing")
 	}
 
-	deleteReq(t, env.server.URL+"/__admin/api/rules/"+createdRule.ID)
-	deleteReq(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID)
+	deleteReq(t, env.admin.URL+"/api/rules/"+createdRule.ID)
+	deleteReq(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID)
 }
 
 func TestExportImport(t *testing.T) {
 	env := setupEnv(t)
-	defer env.server.Close()
+	defer env.admin.Close()
+	defer env.mock.Close()
 	defer func() {
 		_ = env.dbClose()
 	}()
@@ -163,7 +168,7 @@ func TestExportImport(t *testing.T) {
 		"description": "",
 	}
 	var createdEndpoint server.Endpoint
-	postJSON(t, env.server.URL+"/__admin/api/endpoints", endpointPayload, &createdEndpoint)
+	postJSON(t, env.admin.URL+"/api/endpoints", endpointPayload, &createdEndpoint)
 
 	rulePayload := map[string]any{
 		"name":     "默认",
@@ -180,19 +185,19 @@ func TestExportImport(t *testing.T) {
 		},
 	}
 	var createdRule server.Rule
-	postJSON(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID+"/rules", rulePayload, &createdRule)
+	postJSON(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID+"/rules", rulePayload, &createdRule)
 
 	var bundle server.ExportBundle
-	getJSON(t, env.server.URL+"/__admin/api/export", &bundle)
+	getJSON(t, env.admin.URL+"/api/export", &bundle)
 	if len(bundle.Endpoints) != 1 || len(bundle.Rules) != 1 {
 		t.Fatalf("export bundle invalid")
 	}
 
-	deleteReq(t, env.server.URL+"/__admin/api/endpoints/"+createdEndpoint.ID)
+	deleteReq(t, env.admin.URL+"/api/endpoints/"+createdEndpoint.ID)
 
-	postJSON(t, env.server.URL+"/__admin/api/import", bundle, nil)
+	postJSON(t, env.admin.URL+"/api/import", bundle, nil)
 	var endpoints []server.Endpoint
-	getJSON(t, env.server.URL+"/__admin/api/endpoints", &endpoints)
+	getJSON(t, env.admin.URL+"/api/endpoints", &endpoints)
 	if len(endpoints) != 1 {
 		t.Fatalf("import endpoints missing")
 	}

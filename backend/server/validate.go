@@ -23,8 +23,8 @@ func validateEndpoint(ep Endpoint) error {
 	if ep.PathPattern == "" || !strings.HasPrefix(ep.PathPattern, "/") {
 		return fmt.Errorf("pathPattern must start with /")
 	}
-	if strings.HasPrefix(ep.PathPattern, "/__admin") || strings.HasPrefix(ep.PathPattern, "/_") {
-		return fmt.Errorf("pathPattern must not start with /__admin or /_")
+	if strings.HasPrefix(ep.PathPattern, "/_") {
+		return fmt.Errorf("pathPattern must not start with /_")
 	}
 	if strings.HasPrefix(ep.PathPattern, "re:") {
 		if _, err := regexp.Compile(ep.PathPattern[3:]); err != nil {

@@ -1,0 +1,19 @@
+services:
+  mock-server:
+    build:
+      context: .
+    ports:
+      - "8180:8180"
+      - "8181:8181"
+    environment:
+      MOCK_ADDR: "0.0.0.0:8180"
+      ADMIN_ADDR: "0.0.0.0:8181"
+      DB_PATH: "/data/mock.db"
+      ADMIN_USER: "${ADMIN_USER:-}"
+      ADMIN_PASS: "${ADMIN_PASS:-}"
+    volumes:
+      - mock-server-data:/data
+    restart: unless-stopped
+
+volumes:
+  mock-server-data:

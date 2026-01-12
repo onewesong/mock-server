@@ -6,9 +6,8 @@
 
 - **单仓库（monorepo）**：Go 后端 + Vue3 前端。
 - **运行时分区**：
-  - 管理台 UI：`/__admin/`（SPA）
-  - 管理 API：`/__admin/api/*`
-  - Mock 流量：除 `__admin` 前缀外的所有请求（或可配置前缀，如 `/mock/*`）
+  - 管理端口（Admin）：管理台 UI：`/`（SPA），管理 API：`/api/*`
+  - Mock 端口（Mock）：对外提供实际 Mock 接口服务
 - **核心思想**：Gin 只注册管理路由；Mock 请求走 `NoRoute` 统一入口，由“规则引擎”在内存中匹配 endpoint/rule，渲染响应并返回。
 
 ## 2. 关键需求与交互
@@ -100,30 +99,31 @@
 
 ### 4.2 路由与职责
 
-- 管理 API（仅管理台使用）：
-  - `GET /__admin/api/endpoints`
-  - `POST /__admin/api/endpoints`
-  - `GET /__admin/api/endpoints/:id`
-  - `PUT /__admin/api/endpoints/:id`
-  - `DELETE /__admin/api/endpoints/:id`
-  - `GET /__admin/api/endpoints/:id/rules`
-  - `POST /__admin/api/endpoints/:id/rules`
-  - `PUT /__admin/api/rules/:id`
-  - `DELETE /__admin/api/rules/:id`
-  - `POST /__admin/api/preview`：输入“模拟请求”，返回命中规则与渲染结果
-  - `GET /__admin/api/export`、`POST /__admin/api/import`
-- 管理台静态资源：
-  - `GET /__admin/*`（SPA history fallback）
-- Mock 请求入口：
-  - `NoRoute(mockHandler)`：除 `__admin` 前缀以外的所有请求
+- 管理 API（Admin 端口，仅管理台使用）：
+  - `GET /api/endpoints`
+  - `POST /api/endpoints`
+  - `GET /api/endpoints/:id`
+  - `PUT /api/endpoints/:id`
+  - `DELETE /api/endpoints/:id`
+  - `GET /api/endpoints/:id/rules`
+  - `POST /api/endpoints/:id/rules`
+  - `PUT /api/rules/:id`
+  - `DELETE /api/rules/:id`
+  - `POST /api/preview`：输入“模拟请求”，返回命中规则与渲染结果
+  - `GET /api/export`、`POST /api/import`
+- 管理台静态资源（Admin 端口）：
+  - `GET /`（SPA）
+  - `GET /*`（SPA history fallback，排除 `/api` 与 `/assets`）
+- Mock 请求入口（Mock 端口）：
+  - `NoRoute(mockHandler)`：所有请求都视为 Mock 流量入口
 
 #### 管理 API：请求/响应约定（建议）
 
 - 统一错误格式：
   - `{"error":{"code":"VALIDATION_ERROR","message":"...","details":[...]}}`
-- `POST /__admin/api/preview`（示例请求）：
+- `POST /api/preview`（示例请求）：
   - `{"method":"POST","path":"/users/123","query":{"debug":"1"},"headers":{"X-Env":"test"},"body":"{\"role\":\"admin\"}"}`
-- `POST /__admin/api/preview`（示例响应）：
+- `POST /api/preview`（示例响应）：
   - `{"matched":true,"endpointId":"...","ruleId":"...","explain":["method ok","path ok","header X-Env=... ok"],"response":{"status":200,"headers":{"Content-Type":"application/json"},"body":"...","delayMs":50}}`
 
 ### 4.3 规则引擎（匹配流程）
@@ -194,9 +194,9 @@
 
 - 默认仅监听 `127.0.0.1`（可通过环境变量改为 `0.0.0.0`）
 - 管理台鉴权（默认启用 Basic Auth，你已确认）：
-  - 仅保护 `__admin` 静态资源与 `__admin/api/*`
+  - 仅作用于 Admin 端口（同时保护 `/` 静态资源与 `/api/*`）
   - 用户名/密码通过环境变量配置（例如 `ADMIN_USER`/`ADMIN_PASS`）
-- CORS：仅对 `__admin` API 允许（开发时支持 Vite 代理）
+- CORS：仅对管理 API 允许（开发时支持 Vite 代理）
 - 预留：请求审计日志（命中哪个 endpoint/rule）
 
 ## 5. 前端设计（Vue3）
@@ -248,7 +248,7 @@
 - `method` 必填，且为允许集合（GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS）
 - `pathPattern` 必填：
   - 必须以 `/` 开头
-  - 不能以 `/_` 或 `/__admin` 开头（避免与管理台冲突）
+  - 不能以 `/_` 开头
   - `:param` 名称需满足 `[A-Za-z_][A-Za-z0-9_]*`
   - `**` 若支持则建议仅允许在末尾；`re:` 模式的正则必须可编译
 - `priority` 为整数（MVP 可限定范围，如 0~10000）

@@ -19,14 +19,14 @@ type compiledEndpoint struct {
 }
 
 type RequestInfo struct {
-	Method    string
-	Path      string
-	Query     map[string][]string
-	Headers   map[string][]string
-	Cookies   map[string]string
-	BodyRaw   string
-	BodyJSON  gjson.Result
-	HasJSON   bool
+	Method     string
+	Path       string
+	Query      map[string][]string
+	Headers    map[string][]string
+	Cookies    map[string]string
+	BodyRaw    string
+	BodyJSON   gjson.Result
+	HasJSON    bool
 	PathParams map[string]string
 }
 

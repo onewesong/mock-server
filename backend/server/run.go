@@ -8,7 +8,8 @@ import (
 )
 
 type Config struct {
-	Addr       string
+	AdminAddr  string
+	MockAddr   string
 	DBPath     string
 	AdminUser  string
 	AdminPass  string
@@ -16,13 +17,22 @@ type Config struct {
 }
 
 func loadConfig() Config {
-	addr := getenv("ADDR", "127.0.0.1:8080")
+	adminAddr := os.Getenv("ADMIN_ADDR")
+	mockAddr := os.Getenv("MOCK_ADDR")
+	if adminAddr == "" {
+		adminAddr = "127.0.0.1:8181"
+	}
+	if mockAddr == "" {
+		mockAddr = "127.0.0.1:8180"
+	}
+
 	dbPath := getenv("DB_PATH", "data/mock.db")
 	adminUser := os.Getenv("ADMIN_USER")
 	adminPass := os.Getenv("ADMIN_PASS")
 	enableAuth := adminUser != "" && adminPass != ""
 	return Config{
-		Addr:       addr,
+		AdminAddr:  adminAddr,
+		MockAddr:   mockAddr,
 		DBPath:     dbPath,
 		AdminUser:  adminUser,
 		AdminPass:  adminPass,
@@ -47,16 +57,38 @@ func Run() {
 		log.Fatalf("init store failed: %v", err)
 	}
 
-	router := NewRouter(store, cfg)
+	adminRouter := NewAdminRouter(store, cfg)
+	mockRouter := NewMockRouter(store)
 
-	srv := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           router,
+	adminSrv := &http.Server{
+		Addr:              cfg.AdminAddr,
+		Handler:           adminRouter,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("mock-server listen on %s", cfg.Addr)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	mockSrv := &http.Server{
+		Addr:              cfg.MockAddr,
+		Handler:           mockRouter,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	errCh := make(chan error, 2)
+
+	go func() {
+		log.Printf("admin listen on http://%s", cfg.AdminAddr)
+		if err := adminSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+	go func() {
+		log.Printf("mock listen on http://%s", cfg.MockAddr)
+		if err := mockSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- err
+		}
+	}()
+
+	// 等任一端口启动失败/运行出错即退出（MVP 不做信号优雅退出）。
+	if err := <-errCh; err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
 }
