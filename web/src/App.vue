@@ -2,11 +2,11 @@
   <div class="app-shell">
     <header class="app-header">
       <div>
-        <div class="app-title">Mock Server 管理台</div>
-        <div class="app-subtitle">endpoint 与规则配置即时生效</div>
+        <div class="app-title">Mock Server</div>
+        <div class="app-subtitle">简化版：只配置状态码与响应体</div>
       </div>
       <div class="actions-row">
-        <el-button type="primary" @click="openCreateDialog">新增 Endpoint</el-button>
+        <el-button type="primary" @click="openCreateDialog">新增 Route</el-button>
         <el-button @click="exportData">导出</el-button>
         <el-upload :auto-upload="false" :show-file-list="false" accept="application/json" @change="importData">
           <el-button>导入</el-button>
@@ -16,8 +16,8 @@
 
     <div class="app-grid">
       <section class="panel">
-        <div class="panel-title">Endpoints</div>
-        <el-input v-model="search" placeholder="搜索路径或名称" clearable />
+        <div class="panel-title">Routes</div>
+        <el-input v-model="search" placeholder="过滤（路径/名称）" clearable />
         <div style="margin-top: 12px; display: grid; gap: 8px">
           <div
             v-for="ep in filteredEndpoints"
@@ -31,100 +31,58 @@
               <span>{{ ep.pathPattern }}</span>
             </div>
             <div>{{ ep.name || "未命名" }}</div>
-            <div class="endpoint-meta" v-if="ep.tags?.length">标签：{{ ep.tags.join(", ") }}</div>
           </div>
         </div>
       </section>
 
       <section class="panel" v-if="store.selected">
-        <div class="panel-title">Endpoint 配置</div>
-        <el-form :model="endpointForm" label-width="90px">
-          <el-form-item label="启用">
-            <el-switch v-model="endpointForm.enabled" />
-          </el-form-item>
-          <el-form-item label="方法">
-            <el-select v-model="endpointForm.method" placeholder="选择方法">
-              <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="路径">
-            <el-input v-model="endpointForm.pathPattern" placeholder="/users/:id" />
-          </el-form-item>
-          <el-form-item label="名称">
-            <el-input v-model="endpointForm.name" />
-          </el-form-item>
-          <el-form-item label="标签">
-            <el-input v-model="tagsInput" placeholder="用英文逗号分隔" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input v-model="endpointForm.description" type="textarea" :rows="2" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="saveEndpoint">保存 Endpoint</el-button>
-            <el-button type="danger" plain @click="removeEndpoint">删除</el-button>
-          </el-form-item>
-        </el-form>
-
-        <div class="panel-title" style="margin-top: 24px">Rules</div>
-        <div class="actions-row" style="margin-bottom: 12px">
-          <el-button type="primary" @click="openRuleDialog()">新增 Rule</el-button>
+        <div class="panel-title">Route</div>
+        <div class="route-bar">
+          <el-switch v-model="endpointForm.enabled" />
+          <el-select v-model="endpointForm.method" placeholder="GET" style="width: 120px">
+            <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+          </el-select>
+          <el-input v-model="endpointForm.pathPattern" placeholder="/users/:id" />
+          <el-button type="primary" @click="saveEndpoint">保存</el-button>
+          <el-button type="danger" plain @click="removeEndpoint">删除</el-button>
         </div>
-        <el-table :data="store.rules" size="small">
-          <el-table-column prop="name" label="名称" min-width="140" />
-          <el-table-column prop="priority" label="优先级" width="90" />
-          <el-table-column prop="weight" label="权重" width="80" />
-          <el-table-column prop="enabled" label="启用" width="70">
-            <template #default="scope">
-              <el-tag v-if="scope.row.enabled" type="success">启用</el-tag>
-              <el-tag v-else type="info">关闭</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="140">
-            <template #default="scope">
-              <el-button size="small" @click="openRuleDialog(scope.row)">编辑</el-button>
-              <el-button size="small" type="danger" plain @click="removeRule(scope.row.id)">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div style="margin-top: 10px">
+          <el-input v-model="endpointForm.name" placeholder="备注/名称（可选）" />
+        </div>
 
-        <div class="panel-title" style="margin-top: 24px">调试预览</div>
-        <el-form :model="previewForm" label-width="90px">
-          <el-form-item label="方法">
-            <el-select v-model="previewForm.method" placeholder="GET">
-              <el-option v-for="m in methods" :key="m" :label="m" :value="m" />
+        <div class="panel-title" style="margin-top: 20px">Status & Body</div>
+        <div v-if="!responseRuleId" class="empty-hint">
+          当前 Route 还没有响应配置。
+          <el-button type="primary" size="small" @click="createDefaultResponse">创建默认响应</el-button>
+        </div>
+        <div v-else class="response-editor">
+          <div class="response-meta">
+            <el-input-number v-model="responseForm.status" :min="100" :max="599" />
+            <el-select v-model="responseForm.bodyType" style="width: 120px">
+              <el-option label="json" value="json" />
+              <el-option label="text" value="text" />
             </el-select>
-          </el-form-item>
-          <el-form-item label="路径">
-            <el-input v-model="previewForm.path" placeholder="/users/123" />
-          </el-form-item>
-          <el-form-item label="Query">
-            <el-input v-model="previewQuery" placeholder='{"debug":"1"}' />
-          </el-form-item>
-          <el-form-item label="Headers">
-            <el-input v-model="previewHeaders" placeholder='{"X-Env":"test"}' />
-          </el-form-item>
-          <el-form-item label="Body">
-            <el-input v-model="previewForm.body" type="textarea" :rows="3" />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="runPreview">预览命中</el-button>
-          </el-form-item>
-        </el-form>
-        <el-card v-if="store.preview" style="margin-top: 12px">
-          <div>Matched: {{ store.preview.matched }}</div>
-          <div v-if="store.preview.endpointId">Endpoint: {{ store.preview.endpointId }}</div>
-          <div v-if="store.preview.ruleId">Rule: {{ store.preview.ruleId }}</div>
-          <div style="margin-top: 8px; color: var(--muted)">
-            {{ store.preview.explain?.join("; ") }}
+            <el-button v-if="responseForm.bodyType === 'json'" @click="beautifyJSON">Beautify JSON</el-button>
+            <div style="flex: 1"></div>
+            <el-button type="primary" @click="saveResponse">保存响应</el-button>
           </div>
-          <pre v-if="store.preview.response" style="margin-top: 8px; white-space: pre-wrap">
-{{ JSON.stringify(store.preview.response, null, 2) }}
-          </pre>
-        </el-card>
+          <el-input
+            v-model="responseForm.body"
+            type="textarea"
+            :rows="12"
+            placeholder="响应体（json/text）"
+            style="margin-top: 10px"
+          />
+        </div>
+      </section>
+
+      <section class="panel" v-else>
+        <div class="panel-title">Route</div>
+        <div style="color: var(--muted)">先在左侧选择或新增一个 Route</div>
       </section>
     </div>
 
-    <el-dialog v-model="showEndpointDialog" title="新增 Endpoint" width="520px">
+    <el-dialog v-model="showEndpointDialog" title="新增 Route" width="520px">
       <el-form :model="createForm" label-width="90px">
         <el-form-item label="方法">
           <el-select v-model="createForm.method" placeholder="选择方法">
@@ -135,96 +93,12 @@
           <el-input v-model="createForm.pathPattern" placeholder="/users/:id" />
         </el-form-item>
         <el-form-item label="名称">
-          <el-input v-model="createForm.name" />
-        </el-form-item>
-        <el-form-item label="标签">
-          <el-input v-model="createTags" placeholder="用英文逗号分隔" />
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="createForm.description" type="textarea" :rows="2" />
+          <el-input v-model="createForm.name" placeholder="可选" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showEndpointDialog = false">取消</el-button>
         <el-button type="primary" @click="createEndpoint">创建</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="showRuleDialog" title="Rule 设置" width="720px">
-      <el-form :model="ruleForm" label-width="90px">
-        <el-form-item label="名称">
-          <el-input v-model="ruleForm.name" />
-        </el-form-item>
-        <el-form-item label="启用">
-          <el-switch v-model="ruleForm.enabled" />
-        </el-form-item>
-        <el-form-item label="优先级">
-          <el-input-number v-model="ruleForm.priority" :min="0" />
-        </el-form-item>
-        <el-form-item label="权重">
-          <el-input-number v-model="ruleForm.weight" :min="0" />
-        </el-form-item>
-        <el-form-item label="匹配条件">
-          <el-table :data="ruleForm.matchers" size="small" class="matchers-table">
-            <el-table-column label="来源" width="120">
-              <template #default="scope">
-                <el-select v-model="scope.row.source" placeholder="source">
-                  <el-option v-for="s in matcherSources" :key="s" :label="s" :value="s" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="Key" width="140">
-              <template #default="scope">
-                <el-input v-model="scope.row.key" />
-              </template>
-            </el-table-column>
-            <el-table-column label="Op" width="120">
-              <template #default="scope">
-                <el-select v-model="scope.row.op" placeholder="op">
-                  <el-option v-for="o in matcherOps" :key="o" :label="o" :value="o" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="Value">
-              <template #default="scope">
-                <el-input v-model="scope.row.value" />
-              </template>
-            </el-table-column>
-            <el-table-column label="Case" width="80">
-              <template #default="scope">
-                <el-switch v-model="scope.row.caseSensitive" />
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="80">
-              <template #default="scope">
-                <el-button size="small" type="danger" plain @click="removeMatcher(scope.$index)">删</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-          <el-button size="small" style="margin-top: 8px" @click="addMatcher">新增条件</el-button>
-        </el-form-item>
-        <el-form-item label="状态码">
-          <el-input-number v-model="ruleForm.response.status" :min="100" :max="599" />
-        </el-form-item>
-        <el-form-item label="延迟(ms)">
-          <el-input-number v-model="ruleForm.response.delayMs" :min="0" />
-        </el-form-item>
-        <el-form-item label="Body 类型">
-          <el-select v-model="ruleForm.response.bodyType">
-            <el-option label="json" value="json" />
-            <el-option label="text" value="text" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Headers">
-          <el-input v-model="headersInput" placeholder='{"Content-Type":"application/json"}' />
-        </el-form-item>
-        <el-form-item label="Body">
-          <el-input v-model="ruleForm.response.body" type="textarea" :rows="4" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showRuleDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveRule">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -234,17 +108,14 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { useEndpointsStore } from "./stores/endpoints";
-import type { Endpoint, Rule } from "./types";
+import type { Endpoint } from "./types";
 import { api } from "./api";
 
 const store = useEndpointsStore();
 const search = ref("");
 const showEndpointDialog = ref(false);
-const showRuleDialog = ref(false);
 
 const methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-const matcherSources = ["pathParam", "query", "header", "cookie", "bodyJsonPath", "bodyRaw", "method"];
-const matcherOps = ["eq", "ne", "contains", "regex", "in", "exists"];
 
 const createForm = reactive<Partial<Endpoint>>({
   method: "GET",
@@ -254,7 +125,6 @@ const createForm = reactive<Partial<Endpoint>>({
   enabled: true,
   tags: []
 });
-const createTags = ref("");
 
 const endpointForm = reactive<Partial<Endpoint>>({
   method: "GET",
@@ -264,34 +134,13 @@ const endpointForm = reactive<Partial<Endpoint>>({
   enabled: true,
   tags: []
 });
-const tagsInput = ref("");
 
-const ruleForm = reactive<Partial<Rule>>({
-  id: "",
-  name: "",
-  enabled: true,
-  priority: 0,
-  weight: 1,
-  matchers: [],
-  response: {
-    status: 200,
-    headers: {},
-    delayMs: 0,
-    bodyType: "json",
-    body: "",
-    contentType: ""
-  }
+const responseRuleId = ref("");
+const responseForm = reactive({
+  status: 200,
+  bodyType: "json",
+  body: "{}",
 });
-const editingRuleId = ref("");
-const headersInput = ref("{}");
-
-const previewForm = reactive({
-  method: "GET",
-  path: "",
-  body: ""
-});
-const previewQuery = ref("{}");
-const previewHeaders = ref("{}");
 
 const filteredEndpoints = computed(() => {
   const keyword = search.value.trim().toLowerCase();
@@ -310,10 +159,26 @@ watch(
     endpointForm.method = val.method;
     endpointForm.pathPattern = val.pathPattern;
     endpointForm.name = val.name;
-    endpointForm.description = val.description;
     endpointForm.enabled = val.enabled;
-    endpointForm.tags = val.tags || [];
-    tagsInput.value = (val.tags || []).join(",");
+  },
+  { immediate: true }
+);
+
+watch(
+  () => store.rules,
+  () => {
+    const primary = store.rules?.[0];
+    if (!primary) {
+      responseRuleId.value = "";
+      responseForm.status = 200;
+      responseForm.bodyType = "json";
+      responseForm.body = "{}";
+      return;
+    }
+    responseRuleId.value = primary.id;
+    responseForm.status = primary.response?.status ?? 200;
+    responseForm.bodyType = primary.response?.bodyType || "json";
+    responseForm.body = primary.response?.body || "";
   },
   { immediate: true }
 );
@@ -328,17 +193,13 @@ function openCreateDialog() {
   createForm.name = "";
   createForm.description = "";
   createForm.enabled = true;
-  createTags.value = "";
+  createForm.tags = [];
   showEndpointDialog.value = true;
 }
 
 async function createEndpoint() {
   try {
-    const tags = createTags.value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    await store.createEndpoint({ ...createForm, tags, enabled: true });
+    await store.createEndpoint({ ...createForm, tags: createForm.tags || [], description: createForm.description || "" });
     showEndpointDialog.value = false;
   } catch (err: any) {
     ElMessage.error(err.message);
@@ -348,11 +209,7 @@ async function createEndpoint() {
 async function saveEndpoint() {
   if (!store.selected) return;
   try {
-    const tags = tagsInput.value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    await store.updateEndpoint(store.selected.id, { ...endpointForm, tags });
+    await store.updateEndpoint(store.selected.id, { ...endpointForm, tags: store.selected.tags || [], description: store.selected.description || "" });
     ElMessage.success("已保存");
   } catch (err: any) {
     ElMessage.error(err.message);
@@ -369,88 +226,67 @@ async function removeEndpoint() {
   }
 }
 
-function openRuleDialog(rule?: Rule) {
-  if (rule) {
-    editingRuleId.value = rule.id;
-    ruleForm.id = rule.id;
-    ruleForm.name = rule.name;
-    ruleForm.enabled = rule.enabled;
-    ruleForm.priority = rule.priority;
-    ruleForm.weight = rule.weight;
-    ruleForm.matchers = rule.matchers.map((m) => ({ ...m }));
-    ruleForm.response = { ...rule.response, headers: { ...rule.response.headers } };
-    headersInput.value = JSON.stringify(rule.response.headers || {});
-  } else {
-    editingRuleId.value = "";
-    ruleForm.id = "";
-    ruleForm.name = "";
-    ruleForm.enabled = true;
-    ruleForm.priority = 0;
-    ruleForm.weight = 1;
-    ruleForm.matchers = [];
-    ruleForm.response = {
-      status: 200,
-      headers: {},
-      delayMs: 0,
-      bodyType: "json",
-      body: "",
-      contentType: ""
-    };
-    headersInput.value = "{}";
-  }
-  showRuleDialog.value = true;
-}
-
-function addMatcher() {
-  ruleForm.matchers?.push({
-    source: "query",
-    key: "",
-    op: "eq",
-    value: "",
-    caseSensitive: false
-  });
-}
-
-function removeMatcher(index: number) {
-  ruleForm.matchers?.splice(index, 1);
-}
-
-async function saveRule() {
+async function createDefaultResponse() {
+  if (!store.selectedId) return;
   try {
-    const headers = JSON.parse(headersInput.value || "{}");
-    ruleForm.response = { ...ruleForm.response, headers };
-    if (editingRuleId.value) {
-      await store.updateRule(editingRuleId.value, ruleForm);
-    } else {
-      await store.createRule(ruleForm);
+    await store.createRule({
+      name: "默认响应",
+      enabled: true,
+      priority: 0,
+      weight: 1,
+      matchers: [],
+      response: {
+        status: responseForm.status,
+        headers: {},
+        delayMs: 0,
+        bodyType: responseForm.bodyType,
+        body: responseForm.body,
+        contentType: ""
+      }
+    } as any);
+    ElMessage.success("已创建");
+  } catch (err: any) {
+    ElMessage.error(err.message || "创建失败");
+  }
+}
+
+async function saveResponse() {
+  if (!store.selectedId || !responseRuleId.value) return;
+  try {
+    const rule = store.rules.find((r) => r.id === responseRuleId.value);
+    if (!rule) return;
+
+    // 后端校验：json bodyType 且 body 非空时必须是合法 JSON
+    if (responseForm.bodyType === "json" && responseForm.body.trim() !== "") {
+      JSON.parse(responseForm.body);
     }
-    showRuleDialog.value = false;
+
+    await store.updateRule(rule.id, {
+      endpointId: store.selectedId,
+      name: rule.name,
+      enabled: rule.enabled,
+      priority: rule.priority,
+      weight: rule.weight,
+      matchers: rule.matchers,
+      response: {
+        ...rule.response,
+        status: responseForm.status,
+        bodyType: responseForm.bodyType,
+        body: responseForm.body
+      }
+    } as any);
+    ElMessage.success("已保存");
   } catch (err: any) {
     ElMessage.error(err.message || "保存失败");
   }
 }
 
-async function removeRule(id: string) {
+function beautifyJSON() {
   try {
-    await store.deleteRule(id);
-  } catch (err: any) {
-    ElMessage.error(err.message);
-  }
-}
-
-async function runPreview() {
-  try {
-    const query = JSON.parse(previewQuery.value || "{}");
-    const headers = JSON.parse(previewHeaders.value || "{}");
-    await store.previewRequest({
-      method: previewForm.method,
-      path: previewForm.path,
-      query,
-      headers,
-      body: previewForm.body
-    });
-  } catch (err: any) {
-    ElMessage.error(err.message || "预览失败");
+    const parsed = JSON.parse(responseForm.body || "{}");
+    responseForm.body = JSON.stringify(parsed, null, 2);
+  } catch {
+    ElMessage.error("JSON 格式不正确");
   }
 }
 
